@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 import shutil
 import ntpath
@@ -13,6 +15,9 @@ from tkinter.filedialog import askopenfilename
 from tkinter.filedialog import askdirectory
 from tkinter import messagebox
 from zipfile import ZipFile
+
+
+SETTINGS_FILE="grbdiff.ini"
 
 # Definition of all layers to be recognized.
 # https://www.pcbway.com/helpcenter/technical_support/Gerber_File_Extention_from_Different_Software.html
@@ -114,18 +119,19 @@ diff_gerbv_args = [
 
 # Write Settings file
 def write_settings_file():
-    settings_object.write(open('settings.ini', 'w'))
+    settings_object.write(open(SETTINGS_FILE, 'w'))
 
 # Read Settings file. Create it if it doesn't exist.
 settings_object = ConfigParser()
-if not os.path.exists('settings.ini'):
+if not os.path.exists(SETTINGS_FILE):
     settings_object['PATHS'] = {'gerbv_path': '', 'grb_file1': '', 'grb_file2': '', 'png_export_path': ''}
     settings_object['TEMPLATES'] = {'diff_color_combobox': 0, 'png_color_combobox': 0, 'gerber_color_combobox': 0}
-    settings_object['OTHER'] = {'png_export_dpi': '300'}
+    settings_object['OTHER'] = {'png_export_dpi': '300',
+                                'window_geometry': '1200x800' if os.name=='nt' else '1140x870+100+100'}
     write_settings_file()
 else:
     # Read File
-    settings_object.read('settings.ini')
+    settings_object.read(SETTINGS_FILE)
 settings_paths = settings_object['PATHS']
 settings_templates = settings_object['TEMPLATES']
 settings_other = settings_object['OTHER']
@@ -160,7 +166,16 @@ root = Tk()
 
 # root window title and dimension
 root.title("GrbDiff - Visualize changes in Gerber files")
-root.geometry('1200x800')
+root.geometry(settings_other['window_geometry'])
+
+# save window dimensions on exit
+def on_close():
+    global settings_object
+    settings_other['window_geometry'] = root.geometry()
+    write_settings_file()
+    root.destroy()
+
+root.protocol("WM_DELETE_WINDOW", on_close)
 
 row=1
 dpi_entry_variable = StringVar()  # Declaration
@@ -211,10 +226,10 @@ for index, value in enumerate(filetypes):
     print(index, "Layer:", value[0], "Exp0:", value[1][0])
     layernames.append(Label(root, text=value[0]))
     layernames[index].grid(column=1, row=row, sticky=W, padx=10)
-    firstgerbers.append(Combobox(root, width=70, values=["---"]))
+    firstgerbers.append(Combobox(root, width=70 if os.name=='nt' else 40, values=["---"]))
     firstgerbers[index].grid(column=2, row=row, sticky=W, padx=10)
     firstgerbers[index].set("---")
-    secondgerbers.append(Combobox(root, width=70, values=["---"]))
+    secondgerbers.append(Combobox(root, width=70 if os.name=='nt' else 40, values=["---"]))
     secondgerbers[index].grid(column=3, row=row, sticky=W, padx=10)
     secondgerbers[index].set("---")
     diffbutton.append(Button(root, text='Diff in GerbV',command=lambda index=index: diff_gerbers(index)))
@@ -294,7 +309,8 @@ def open_gerber_file(sel_file, sel):
         filelist = [ntpath.basename(sel_file)]
     else:
         # Get all files an folders in path, and discard the folders
-        filelist = [f for f in os.listdir(filedir) if os.path.isfile(os.path.join(filedir, f))]
+        filelist = [f for f in sorted(os.listdir(filedir))
+                    if not f.startswith('.') and os.path.isfile(os.path.join(filedir, f))]
         print("Files in path:")
     print(filelist)
 
@@ -590,7 +606,11 @@ row = row + 1
 
 
 def select_gerbv():
-    gerbv_file = askopenfilename(title="Select GerbV Executable", filetypes=[('GerbV executable', 'GerbV*.exe')])
+    if os.name == 'nt':
+        filetypes = [('GerbV executable', 'GerbV*.exe')]
+    else:
+        filetypes = [('All files', '*')]
+    gerbv_file = askopenfilename(title="Select GerbV Executable", filetypes=filetypes)
     if gerbv_file is not None:
         print("Selected GerbV:", gerbv_file)
         gerbv_path.configure(text=gerbv_file)
